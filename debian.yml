@@ -7,6 +7,8 @@
     user: olivier
     # Timezone
     timezone: 'Europe/Paris'
+    # SSH
+    common_ssh_port: 2222
 
   tasks:
   
@@ -32,6 +34,7 @@
         state: present
         validate: "/usr/sbin/visudo -cf %s"
 
+        
     ###################
     # User Management
     ###################
@@ -40,15 +43,42 @@
             comment="{{ user }} user"
             shell=/bin/bash
 
-    - name: Add {{ user }} to sudoers
-      template: src=templates/sudoers-user.j2
-                dest=/etc/sudoers.d/{{ user }}-sudoer
-                validate='visudo -cf %s'
+    - name: Add {{ user }} to sudoers     
+      lineinfile: dest=/etc/sudoers.d/{{ user }}-sudoer
+                  regexp="{{ user }} ALL"
+                  line="{{ user }} ALL=(ALL) ALL"
+                  state=present
+                  create=True
+                  validate='visudo -cf %s'                  
 
     - name: Add my public key to {{ user }}
       authorized_key: user={{ user }}
                       key="{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+    
+    
+    ###################
+    # Required. tools
+    ###################
+    - name: Install usefull system tools
+      apt: name={{ item }} state=present
+      with_items:
+        - ufw
+        - unattended-upgrades
+        
+        
+    ###################
+    # Packages Management
+    ###################                
+    - name: Update APT package cache
+      apt: update_cache=yes cache_valid_time=3600
+  
+    - name: Upgrade APT to the latest packages
+      apt: upgrade=safe
+      
+    - name: Adjust APT update intervals
+      copy: src=apt_periodic dest=/etc/apt/apt.conf.d/10periodic
 
+      
     ###################
     # Time management
     ###################
@@ -64,6 +94,7 @@
     - name: Start the ntp service
       service: name=ntp state=started enabled=true
 
+      
     ###################
     # Security
     ###################
@@ -73,30 +104,31 @@
     - name: Start fail2ban service
       service: name=fail2ban state=started enabled=true
 
-    - name: Copy iptables rules
-      copy: src=files/iptables.up
-            dest=/etc/iptables.up
-      notify: reload iptables
+    - name: Setup ufw
+      ufw: state=enabled policy=deny
 
-    - name: Copy iptables init script # To load iptables on server restart
-      copy: src=files/iptables-script
-            dest=/etc/network/if-pre-up.d/iptables
-            mode=0755
+    - name: Allow ssh traffic
+      ufw: rule=allow port={{ common_ssh_port }} proto=tcp
+            
+    - name: Disallow password authentication
+      lineinfile: dest=/etc/ssh/sshd_config
+                  regexp="^PasswordAuthentication"
+                  line="PasswordAuthentication no"
+                  state=present
+      notify: Restart ssh
 
-    ###################
-    # Misc. tools
-    ###################
-    - name: Install usefull system tools
-      apt: name={{ item }} state=present
-      with_items:
-        - htop
-        - git
+    - name: Change ssh port
+      lineinfile: dest=/etc/ssh/sshd_config
+                  regexp="^Port"
+                  line="Port {{common_ssh_port }}"
+                  state=present
+      notify: Restart ssh
 
   ###################
   # Handlers
   ###################
   handlers:
-    - name: reload iptables
-      action: shell /sbin/iptables-restore < /etc/iptables.up
+    - name: Restart ssh
+      service: name=ssh state=restarted
     - name: update tzdata
       command: /usr/sbin/dpkg-reconfigure --frontend noninteractive tzdata
