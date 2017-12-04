@@ -46,7 +46,7 @@
     - name: Add {{ user }} to sudoers     
       lineinfile: dest=/etc/sudoers.d/{{ user }}-sudoer
                   regexp="{{ user }} ALL"
-                  line="{{ user }} ALL=(ALL) ALL"
+                  line="{{ user }} ALL=(ALL) NOPASSWD:ALL"
                   state=present
                   create=True
                   validate='visudo -cf %s'                  
@@ -73,7 +73,7 @@
       apt: update_cache=yes cache_valid_time=3600
   
     - name: Upgrade APT to the latest packages
-      apt: upgrade=safe
+      apt: upgrade=dist
       
     - name: Adjust APT update intervals
       copy: src=apt_periodic dest=/etc/apt/apt.conf.d/10periodic
@@ -109,6 +109,15 @@
 
     - name: Allow ssh traffic
       ufw: rule=allow port={{ common_ssh_port }} proto=tcp
+
+    - name: Allow HTTP traffic
+      ufw: rule=allow port=80
+
+    - name: Allow HTTPS traffic
+      ufw: rule=allow port=443
+
+    - name: Allow 8080 port
+      ufw: rule=allow port=8080
             
     - name: Disallow password authentication
       lineinfile: dest=/etc/ssh/sshd_config
