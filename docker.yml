@@ -1,0 +1,49 @@
+---
+- hosts: all
+  remote_user: root
+
+  ###################
+  # Tasks
+  ###################
+  tasks:
+  
+    - name: Ensure that APT works with the HTTPS method
+      apt: name={{ item }} state=present
+      with_items:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg2
+        - software-properties-common
+
+
+    - name: Add Docker key
+      apt_key:
+        id: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        validate_certs: no  
+
+
+    - name: Add Docker apt repository
+      apt_repository: repo="deb [arch=amd64] https://download.docker.com/linux/debian jessie stable" state=present
+
+
+    - name: Update apt-cache
+      apt: update_cache=yes cache_valid_time=0
+
+
+    - name: Install Docker package
+      apt: name=docker-ce state=present
+      notify: Start Docker
+
+    - name: Make sure Docker is running
+      systemd: state=started name=docker
+
+
+  ###################
+  # Handlers
+  ###################
+  handlers:
+    - name: Start Docker
+      service: name=docker state=started
